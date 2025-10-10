@@ -1,24 +1,58 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Windows.Forms;
 using Tesseract;
-using System.Linq; // Додано для LINQ
+using WFTradeHelper;
 using WFTrader.Data;
 using WFTrader.Data.Models;
+public class ConsoleRedirector : IDisposable
+{
+    private readonly TextWriter _originalConsoleOut;
+    private readonly TextWriter _originalConsoleError;
+    private readonly StringWriter _stringWriter;
 
+    public ConsoleRedirector()
+    {
+        // Зберігаємо оригінальні потоки
+        _originalConsoleOut = Console.Out;
+        _originalConsoleError = Console.Error;
+
+        // Створюємо порожній потік для захоплення небажаного виводу
+        _stringWriter = new StringWriter();
+
+        // Перенаправляємо консольні потоки
+        Console.SetOut(_stringWriter);
+        Console.SetError(_stringWriter);
+    }
+
+    // Метод для повернення захопленого виводу (якщо потрібен)
+    public string GetOutput() => _stringWriter.ToString();
+
+    // Метод Dispose для відновлення оригінальних потоків
+    public void Dispose()
+    {
+        Console.SetOut(_originalConsoleOut);
+        Console.SetError(_originalConsoleError);
+        _stringWriter.Dispose();
+    }
+}
 class Program
 {
-    // Імпорт API залишається тільки для читання клавіш
     [DllImport("user32.dll")]
     public static extern short GetAsyncKeyState(int vKey);
 
     private static bool isF8Pressed = false;
+
+    const string FILENAME = "items.json";
 
     const int CAPTURE_WIDTH = 1920;
     const int CAPTURE_HEIGHT = 1080;
@@ -36,6 +70,7 @@ class Program
         TextWriter originalOut = Console.Out;
         Console.WriteLine($"Capture in {CAPTURE_WIDTH}x{CAPTURE_HEIGHT}.");
         Console.WriteLine("Press F8 to scan items");
+        //ExportItemsJson();
         try
         {
             var validItemDictionary = LoadItemDictionary(originalOut);
@@ -62,26 +97,20 @@ class Program
             Console.WriteLine(e.ToString());
         }
     }
-
-    // ----------------------------------------------------------------------------------------------------------------------------------
-    // --- ЗМІНИ ТУТ: LoadItemDictionary ---
-    // ----------------------------------------------------------------------------------------------------------------------------------
-
-    private static List<string> LoadItemDictionary(TextWriter originalOut)
+    private static void ExportItemsJson()
     {
-        var dictionary = new List<string>();
-        // Приклад: оновіть рядок підключення на свій
         const string CONNECTION_STRING = "Host=localhost;Port=5432;Database=wftrader;Username=wfuser;Password=secret";
-
         var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
         optionsBuilder.UseNpgsql(CONNECTION_STRING);
 
+        string filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, FILENAME);
+
+
+        var jsonItemsData = new List<JsonItem>();
         try
         {
             using (var context = new AppDbContext(optionsBuilder.Options))
             {
-                dictionary.Add("PLATINUM");
-                // Використовуємо .AsEnumerable() перед First() для коректної роботи LINQ to Objects
                 var items = context.Items
                     .Include(i => i.I18N)
                     .Include(i => i.ItemTags)
@@ -91,177 +120,226 @@ class Program
                             itemTag.Tag.Name == "prime"
                         )
                     )
+                    .Where(item =>
+                        item.ItemTags.All(itemTag =>
+                            itemTag.Tag.Name != "set"
+                        )
+                    )
                     .ToList();
 
                 foreach (var item in items)
                 {
-                    // Перевірка на null та наявність I18N
                     var i18nName = item.I18N.FirstOrDefault()?.Name;
                     if (!string.IsNullOrWhiteSpace(i18nName))
                     {
-                        dictionary.Add(i18nName.Trim().ToUpper());
-                        AllItems.Add(item);
+                        jsonItemsData.Add(new JsonItem { Name = i18nName.ToUpper(), Ducats = item.Ducats });
                     }
                 }
             }
 
-            Console.SetOut(originalOut);
-            Console.WriteLine($"Dictionary loaded: {dictionary.Count} items.");
+            Console.WriteLine($"Loaded data: {jsonItemsData.Count} items.");
             Console.SetOut(new StreamWriter(Stream.Null));
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"Error loading data: {ex.Message}");
+            Console.SetOut(new StreamWriter(Stream.Null));
+        }
+        try
+        {
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            string jsonString = JsonSerializer.Serialize(jsonItemsData, options);
+
+            File.WriteAllText(filePath, jsonString);
+
+            Console.WriteLine($"Successfully saved {jsonItemsData.Count} items to '{FILENAME}'.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error saving JSON file: {ex.Message}");
+        }
+    }
+    private static List<string> LoadItemDictionary(TextWriter originalOut)
+    {
+        var dictionary = new List<string>();
+        string filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, FILENAME);
+
+        var jsonItemsData = new List<JsonItem>();
+
+        try
+        {
+            if (File.Exists(filePath))
+            {
+                string jsonString = File.ReadAllText(filePath);
+
+                jsonItemsData = JsonSerializer.Deserialize<List<JsonItem>>(jsonString);
+
+                foreach (var item in jsonItemsData)
+                {
+                    if (!string.IsNullOrWhiteSpace(item.Name))
+                    {
+                        dictionary.Add(item.Name.Trim().ToUpper());
+                    }
+                }
+                AllItems.Clear();
+                foreach (var jItem in jsonItemsData)
+                {
+                    AllItems.Add(new Item
+                    {
+                        Ducats = jItem.Ducats,
+                        I18N = new List<ItemI18N> { new ItemI18N { Name = jItem.Name } }
+                    });
+                }
+
+
+                Console.SetOut(originalOut);
+                Console.WriteLine($"Dictionary loaded from file: {dictionary.Count} items.");
+                Console.SetOut(new StreamWriter(Stream.Null));
+            }
+            else
+            {
+                Console.SetOut(originalOut);
+                Console.WriteLine($"ERROR: Item dictionary file '{FILENAME}' not found. Check directory.");
+                Console.SetOut(new StreamWriter(Stream.Null));
+            }
+        }
+        catch (Exception ex)
+        {
             Console.SetOut(originalOut);
-            Console.WriteLine($"Error loading dictionary: {ex.Message}");
+            Console.WriteLine($"Error reading item file: {ex.Message}");
             Console.SetOut(new StreamWriter(Stream.Null));
         }
         return dictionary;
     }
-
-    // ----------------------------------------------------------------------------------------------------------------------------------
-    // --- ЗМІНИ ТУТ: RecognizeItemsFromTrade ---
-    // ----------------------------------------------------------------------------------------------------------------------------------
-
     public static void RecognizeItemsFromTrade(List<string> validItemDictionary, TextWriter originalOut)
     {
         Console.SetOut(new StreamWriter(Stream.Null));
 
         try
         {
-            // --- 1. ОНОВЛЕНІ КООРДИНАТИ З ОБРІЗАННЯМ БОКОВИХ КРАЇВ (5px) ---
-            const int BASE_WIDTH = 220;
-            const int BASE_HEIGHT = 55;
-            const int NEW_WIDTH = BASE_WIDTH - 10; // 210
-            const int CROP_SIDE_OFFSET = 5; // 5px зліва + 5px справа
+            const int BASE_WIDTH = 210;
+            const int BASE_HEIGHT = 46;
+            const int CROP_SIDE_OFFSET = 5;
 
+            const int CROP_TOP_PIXELS = 21;
+            const int SET_OFFSET = 59;
             var itemSlots = new List<Rectangle>
             {
-                new Rectangle(215 + CROP_SIDE_OFFSET, 846, NEW_WIDTH, BASE_HEIGHT), // Slot 1
-                new Rectangle(470 + CROP_SIDE_OFFSET, 846, NEW_WIDTH, BASE_HEIGHT), // Slot 2
-                new Rectangle(725 + CROP_SIDE_OFFSET, 846, NEW_WIDTH, BASE_HEIGHT), // Slot 3
-                new Rectangle(980 + CROP_SIDE_OFFSET, 846, NEW_WIDTH, BASE_HEIGHT), // Slot 4
-                new Rectangle(1235 + CROP_SIDE_OFFSET, 846, NEW_WIDTH, BASE_HEIGHT), // Slot 5
-                new Rectangle(1490 + CROP_SIDE_OFFSET, 846, NEW_WIDTH, BASE_HEIGHT)  // Slot 6
+                new Rectangle(215 + CROP_SIDE_OFFSET, 847, BASE_WIDTH, BASE_HEIGHT),
+                new Rectangle(470 + CROP_SIDE_OFFSET, 847, BASE_WIDTH, BASE_HEIGHT),
+                new Rectangle(725 + CROP_SIDE_OFFSET, 847, BASE_WIDTH, BASE_HEIGHT),
+                new Rectangle(980 + CROP_SIDE_OFFSET, 847, BASE_WIDTH, BASE_HEIGHT),
+                new Rectangle(1235 + CROP_SIDE_OFFSET, 847, BASE_WIDTH, BASE_HEIGHT),
+                new Rectangle(1490 + CROP_SIDE_OFFSET, 847, BASE_WIDTH, BASE_HEIGHT)
             };
-
-            using (var screenBitmap = new Bitmap(CAPTURE_WIDTH, CAPTURE_HEIGHT))
+            using (var redirector = new ConsoleRedirector())
             {
-                using (var g = Graphics.FromImage(screenBitmap))
+                using (var screenBitmap = new Bitmap(CAPTURE_WIDTH, CAPTURE_HEIGHT))
                 {
-                    g.CopyFromScreen(0, 0, 0, 0, screenBitmap.Size);
-                }
+                    using (var g = Graphics.FromImage(screenBitmap))
+                    {
+                        g.CopyFromScreen(0, 0, 0, 0, screenBitmap.Size);
+                    }
 
-                Console.SetOut(originalOut);
+                    Console.SetOut(originalOut);
 
-                // Збереження повного скріншота для налагодження
-                string fullScreenPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "full_screen_capture.png");
-                screenBitmap.Save(fullScreenPath, System.Drawing.Imaging.ImageFormat.Png);
-                Console.WriteLine($"Full screenshot saved: {Path.GetFileName(fullScreenPath)}");
+                    string fullScreenPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "full_screen_capture.png");
+                    screenBitmap.Save(fullScreenPath, System.Drawing.Imaging.ImageFormat.Png);
+                    Console.WriteLine($"Full screenshot saved: {Path.GetFileName(fullScreenPath)}");
 
-                Console.WriteLine("\n--- Start scan (F8) ---");
-                Console.SetOut(new StreamWriter(Stream.Null)); // Знову заглушуємо Tesseract
+                    Console.WriteLine("\n--- Start scan (F8) ---");
+                    Console.SetOut(new StreamWriter(Stream.Null));
 
-                // --- ОНОВЛЕНА КОНФІГУРАЦІЯ TESSERACT З ПОВНИМ WHITELIST ---
-                using (var engine = new TesseractEngine(@"./tessdata", "eng", EngineMode.Default,
-                    new string[] { }, // Порожній масив конфігураційних файлів
+                    using (var engine = new TesseractEngine($"{AppDomain.CurrentDomain.BaseDirectory}/tessdata", "eng", EngineMode.Default,
+                    new string[] { }, 
                     new Dictionary<string, object>
                     {
-                        // Додано цифри, апострофи та дефіси для більшої надійності
-                        {"tessedit_char_whitelist", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'- " },
+                        {"tessedit_char_whitelist", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz "},
                         {"tessedit_dump_choices", "0" }
                     }, false))
-                {
-                    Console.SetOut(originalOut);
-                    int platCost = 0;
-                    int slotIndex = 1;
-
-                    foreach (var slot in itemSlots)
                     {
-                        if (slot.Right > CAPTURE_WIDTH || slot.Bottom > CAPTURE_HEIGHT)
+                        Console.SetOut(originalOut);
+                        int platCost = 0;
+                        int slotIndex = 1;
+
+                        foreach (var slot in itemSlots)
                         {
-                            Console.WriteLine($"Error: Slot {slotIndex} not in screen range");
-                            slotIndex++;
-                            continue;
-                        }
-
-                        using (var itemBitmap = screenBitmap.Clone(slot, screenBitmap.PixelFormat))
-                        using (var preprocessedBitmap = PreprocessImage(itemBitmap))
-                        {
-                            // Збереження обробленого зображення для налагодження
-                            string filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, $"slot_{slotIndex}.png");
-                            preprocessedBitmap.Save(filePath, System.Drawing.Imaging.ImageFormat.Png);
-
-                            // --- ДВОПРОХІДНА ЛОГІКА OCR ---
-                            string recognizedText = "";
-                            string finalName = null;
-                            const int CROP_TOP_PIXELS = 15; // Пікселі для обрізання верхнього шуму
-
-                            // 1. ПЕРШИЙ ПРОХІД: Повний блок (для дворядкових назв)
-                            using (var pix = Pix.LoadFromMemory(GetPngBytes(preprocessedBitmap)))
-                            using (var page = engine.Process(pix, PageSegMode.SparseText))
+                            if (slot.Right > CAPTURE_WIDTH || slot.Bottom > CAPTURE_HEIGHT)
                             {
-                                recognizedText = page.GetText().Trim();
-                                finalName = FindBestMatch(recognizedText, validItemDictionary);
+                                Console.WriteLine($"Error: Slot {slotIndex} not in screen range");
+                                slotIndex++;
+                                continue;
                             }
 
-                            // 2. ДРУГИЙ ПРОХІД: Обрізаний блок (для однорядкових з шумом)
-                            // Якщо не знайшли з першого разу АБО розпізнаний текст містить багато шуму, але ми хочемо перевірити обрізаний варіант
-                            if (finalName == null && preprocessedBitmap.Height > CROP_TOP_PIXELS)
+                            using (var itemBitmap = screenBitmap.Clone(slot, screenBitmap.PixelFormat))
+                            using (var preprocessedBitmap = PreprocessImage(itemBitmap))
                             {
-                                using (var croppedBitmap = CropTop(preprocessedBitmap, CROP_TOP_PIXELS))
-                                using (var pixCropped = Pix.LoadFromMemory(GetPngBytes(croppedBitmap)))
-                                // Використовуємо SingleLine, оскільки ми вже відкинули верхню частину
-                                using (var pageCropped = engine.Process(pixCropped, PageSegMode.SingleLine))
-                                {
-                                    string croppedText = pageCropped.GetText().Trim();
-                                    string croppedName = FindBestMatch(croppedText, validItemDictionary);
+                                string filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, $"slot_{slotIndex}.png");
+                                preprocessedBitmap.Save(filePath, System.Drawing.Imaging.ImageFormat.Png);
 
-                                    if (croppedName != null)
+                                string recognizedText = "";
+                                string finalName = null;
+
+                                using (var pix = Pix.LoadFromMemory(GetPngBytes(preprocessedBitmap)))
+                                using (var page = engine.Process(pix, PageSegMode.SparseText))
+                                {
+                                    recognizedText = page.GetText().Trim();
+                                    finalName = FindBestMatch(recognizedText, validItemDictionary);
+                                }
+
+                                if (finalName == null && preprocessedBitmap.Height > CROP_TOP_PIXELS)
+                                {
+                                    using (var croppedBitmap = CropTop(preprocessedBitmap, CROP_TOP_PIXELS))
+                                    using (var pixCropped = Pix.LoadFromMemory(GetPngBytes(croppedBitmap)))
+                                    using (var pageCropped = engine.Process(pixCropped, PageSegMode.SingleLine))
                                     {
-                                        // Використовуємо кращий (обрізаний) результат
-                                        recognizedText = croppedText;
-                                        finalName = croppedName;
+                                        string croppedText = pageCropped.GetText().Trim();
+                                        string croppedName = FindBestMatch(croppedText, validItemDictionary);
+
+                                        if (croppedName != null)
+                                        {
+                                            recognizedText = croppedText;
+                                            finalName = croppedName;
+                                        }
                                     }
                                 }
-                            }
 
-                            // 3. ФІНАЛЬНА ОБРОБКА
-                            if (finalName != null)
-                            {
-                                if (finalName != "PLATINUM")
+                                if (finalName != null)
                                 {
-                                    // Обробка AllItems.Find може бути небезпечною, краще використовувати LINQ:
-                                    var matchedItem = AllItems.FirstOrDefault(x => x.I18N.FirstOrDefault()?.Name?.Trim().ToUpper() == finalName);
-
-                                    if (matchedItem != null && matchedItem.Ducats.HasValue)
+                                    if (finalName != "PLATINUM")
                                     {
-                                        int ducatValue = (int)matchedItem.Ducats.Value;
-                                        if (ducatValue == 15) platCost += PRICEPER15;
-                                        else if (ducatValue == 25) platCost += PRICEPER25;
-                                        else if (ducatValue == 45) platCost += PRICEPER45;
-                                        else if (ducatValue == 65) platCost += PRICEPER65;
-                                        else if (ducatValue == 100) platCost += PRICEPER100;
-                                        Console.WriteLine($"Slot {slotIndex}: {finalName,-50} ({ducatValue,-3} ducats)");
+                                        var matchedItem = AllItems.FirstOrDefault(x => x.I18N.FirstOrDefault()?.Name?.Trim().ToUpper() == finalName);
+
+                                        if (matchedItem != null && matchedItem.Ducats.HasValue)
+                                        {
+                                            int ducatValue = (int)matchedItem.Ducats.Value;
+                                            if (ducatValue == 15) platCost += PRICEPER15;
+                                            else if (ducatValue == 25) platCost += PRICEPER25;
+                                            else if (ducatValue == 45) platCost += PRICEPER45;
+                                            else if (ducatValue == 65) platCost += PRICEPER65;
+                                            else if (ducatValue == 100) platCost += PRICEPER100;
+                                            Console.WriteLine($"Slot {slotIndex}: {finalName,-50} ({ducatValue,-3} ducats)");
+                                        }
+                                        else
+                                        {
+                                            Console.WriteLine($"Slot {slotIndex}: {finalName,-50} (Item data error)");
+                                        }
                                     }
                                     else
                                     {
-                                        Console.WriteLine($"Slot {slotIndex}: {finalName,-50} (Item data error)");
+                                        Console.WriteLine($"Slot {slotIndex}: {finalName,-50}");
                                     }
                                 }
                                 else
                                 {
-                                    Console.WriteLine($"Slot {slotIndex}: {finalName,-50}");
+                                    Console.WriteLine($"Slot {slotIndex}: {recognizedText.Replace("\n", " ").Replace("|", "I"),-50} (Not Found)");
                                 }
                             }
-                            else
-                            {
-                                // Виведення нерозпізнаного тексту для налагодження
-                                Console.WriteLine($"Slot {slotIndex}: {recognizedText.Replace("\n", " ").Replace("|", "I"),-50} (Not Found)");
-                            }
+                            slotIndex++;
                         }
-                        slotIndex++;
+                        Console.WriteLine($"--- Stop scan ---\n Total Platinum: {platCost}");
                     }
-                    Console.WriteLine($"--- Stop scan ---\n Total Platinum: {platCost}");
+
                 }
             }
         }
@@ -277,13 +355,6 @@ class Program
         }
     }
 
-    // ----------------------------------------------------------------------------------------------------------------------------------
-    // --- ДОПОМІЖНІ ФУНКЦІЇ ---
-    // ----------------------------------------------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// Кольоровий фільтр (бінаризація) для світлого тексту на темному фоні.
-    /// </summary>
     public static Bitmap PreprocessImage(Bitmap original)
     {
         Bitmap processed = new Bitmap(original.Width, original.Height);
@@ -298,23 +369,18 @@ class Program
 
                 if (gray > threshold)
                 {
-                    processed.SetPixel(i, j, Color.Black); // Текст (світле) стає ЧОРНИМ
+                    processed.SetPixel(i, j, Color.Black);
                 }
                 else
                 {
-                    processed.SetPixel(i, j, Color.White); // Фон (темне) стає БІЛИМ
+                    processed.SetPixel(i, j, Color.White);
                 }
             }
         }
         return processed;
     }
-
-    /// <summary>
-    /// Обрізає верхню частину бітмапу, щоб видалити верхній шум інтерфейсу.
-    /// </summary>
     private static Bitmap CropTop(Bitmap original, int cropHeight)
     {
-        // Обрізаємо верхні 'cropHeight' пікселів
         Rectangle cropArea = new Rectangle(0, cropHeight, original.Width, original.Height - cropHeight);
 
         if (cropArea.Height <= 0 || cropArea.Width <= 0)
@@ -323,9 +389,6 @@ class Program
         return original.Clone(cropArea, original.PixelFormat);
     }
 
-    /// <summary>
-    /// Перетворює Bitmap на масив байтів PNG для Tesseract.
-    /// </summary>
     private static byte[] GetPngBytes(Bitmap bmp)
     {
         using (var ms = new MemoryStream())
@@ -335,10 +398,6 @@ class Program
         }
     }
 
-
-    /// <summary>
-    /// Обчислює відстань Левенштейна між двома рядками.
-    /// </summary>
     private static int ComputeLevenshteinDistance(string s, string t)
     {
         if (string.IsNullOrEmpty(s))
@@ -355,7 +414,6 @@ class Program
         int m = t.Length;
         var d = new int[n + 1, m + 1];
 
-        // Ініціалізація
         for (int i = 0; i <= n; i++)
         {
             d[i, 0] = i;
@@ -365,7 +423,6 @@ class Program
             d[0, j] = j;
         }
 
-        // Обчислення
         for (int i = 1; i <= n; i++)
         {
             for (int j = 1; j <= m; j++)
@@ -379,12 +436,9 @@ class Program
         return d[n, m];
     }
 
-    /// <summary>
-    /// Знаходить найкращу відповідність, використовуючи мінімальну відстань Левенштейна та компенсацію префікса.
-    /// </summary>
     private static string FindBestMatch(string recognizedText, List<string> dictionary)
     {
-        const int MaxErrorTolerance = 4; // Допуск помилок
+        const int MaxErrorTolerance = 4;
         if (string.IsNullOrWhiteSpace(recognizedText)) return null;
 
         string normalizedRecognized = recognizedText.ToUpper().Replace(" ", "").Replace("\n", "").Replace(":", "").Replace(".", "").Replace(",", "");
@@ -398,19 +452,16 @@ class Program
 
             if (Math.Abs(normalizedRecognized.Length - normalizedItem.Length) > MaxErrorTolerance + 5) continue;
 
-            // --- ОБЧИСЛЕННЯ КІЛЬКОХ ВАРІАНТІВ ВІДСТАНІ ---
 
-            // 1. Повна відповідність
             int distanceFull = ComputeLevenshteinDistance(normalizedRecognized, normalizedItem);
 
-            // 2. Відповідність з ігноруванням 1-го символу (компенсація шуму/помилки на початку)
             int distanceNoPrefix = int.MaxValue;
             if (normalizedRecognized.Length > 1)
             {
                 distanceNoPrefix = ComputeLevenshteinDistance(normalizedRecognized.Substring(1), normalizedItem);
             }
 
-            // 3. Відповідність з ігноруванням 2-х символів
+
             int distanceNo2Prefix = int.MaxValue;
             if (normalizedRecognized.Length > 2)
             {
