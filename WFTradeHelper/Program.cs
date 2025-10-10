@@ -66,6 +66,8 @@ class Program
 
     static void Main(string[] args)
     {
+        Application.SetHighDpiMode(HighDpiMode.SystemAware);
+
         Console.OutputEncoding = Encoding.UTF8;
         TextWriter originalOut = Console.Out;
         Console.WriteLine($"Capture in {CAPTURE_WIDTH}x{CAPTURE_HEIGHT}.");
@@ -217,24 +219,47 @@ class Program
 
         try
         {
+            // 1. Отримуємо поточну роздільну здатність екрана
+            var screenWidth = Screen.AllScreens[0].Bounds.Width;
+            var screenHeight = Screen.AllScreens[0].Bounds.Height;
+            
+            // 2. Визначаємо базову роздільну здатність, для якої були зроблені координати
+            const double BASE_SCREEN_WIDTH = 1920.0;
+            const double BASE_SCREEN_HEIGHT = 1080.0;
+
+            // 3. Розраховуємо коефіцієнти масштабування
+            double scaleX = screenWidth / BASE_SCREEN_WIDTH;
+            double scaleY = screenHeight / BASE_SCREEN_HEIGHT;
+
+            // Базові розміри та відступи (як вони були для 1920x1080)
             const int BASE_WIDTH = 210;
             const int BASE_HEIGHT = 46;
             const int CROP_SIDE_OFFSET = 5;
-
             const int CROP_TOP_PIXELS = 21;
-            const int SET_OFFSET = 59;
-            var itemSlots = new List<Rectangle>
-            {
-                new Rectangle(215 + CROP_SIDE_OFFSET, 847, BASE_WIDTH, BASE_HEIGHT),
-                new Rectangle(470 + CROP_SIDE_OFFSET, 847, BASE_WIDTH, BASE_HEIGHT),
-                new Rectangle(725 + CROP_SIDE_OFFSET, 847, BASE_WIDTH, BASE_HEIGHT),
-                new Rectangle(980 + CROP_SIDE_OFFSET, 847, BASE_WIDTH, BASE_HEIGHT),
-                new Rectangle(1235 + CROP_SIDE_OFFSET, 847, BASE_WIDTH, BASE_HEIGHT),
-                new Rectangle(1490 + CROP_SIDE_OFFSET, 847, BASE_WIDTH, BASE_HEIGHT)
-            };
+
+            // Базові координати слотів для 1920x1080
+            var baseItemSlots = new List<Rectangle>
+        {
+            new Rectangle(215 + CROP_SIDE_OFFSET, 847, BASE_WIDTH, BASE_HEIGHT),
+            new Rectangle(470 + CROP_SIDE_OFFSET, 847, BASE_WIDTH, BASE_HEIGHT),
+            new Rectangle(725 + CROP_SIDE_OFFSET, 847, BASE_WIDTH, BASE_HEIGHT),
+            new Rectangle(980 + CROP_SIDE_OFFSET, 847, BASE_WIDTH, BASE_HEIGHT),
+            new Rectangle(1235 + CROP_SIDE_OFFSET, 847, BASE_WIDTH, BASE_HEIGHT),
+            new Rectangle(1490 + CROP_SIDE_OFFSET, 847, BASE_WIDTH, BASE_HEIGHT)
+        };
+
+            // 4. Масштабуємо координати слотів під поточну роздільну здатність
+            var itemSlots = baseItemSlots.Select(r => new Rectangle(
+                (int)(r.X * scaleX),
+                (int)(r.Y * scaleY),
+                (int)(r.Width * scaleX),
+                (int)(r.Height * scaleY)
+            )).ToList();
+
             using (var redirector = new ConsoleRedirector())
             {
-                using (var screenBitmap = new Bitmap(CAPTURE_WIDTH, CAPTURE_HEIGHT))
+                // Використовуємо поточні розміри екрана для скріншота
+                using (var screenBitmap = new Bitmap(screenWidth, screenHeight))
                 {
                     using (var g = Graphics.FromImage(screenBitmap))
                     {
@@ -251,11 +276,11 @@ class Program
                     Console.SetOut(new StreamWriter(Stream.Null));
 
                     using (var engine = new TesseractEngine($"{AppDomain.CurrentDomain.BaseDirectory}/tessdata", "eng", EngineMode.Default,
-                    new string[] { }, 
+                    new string[] { },
                     new Dictionary<string, object>
                     {
-                        {"tessedit_char_whitelist", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz "},
-                        {"tessedit_dump_choices", "0" }
+                    {"tessedit_char_whitelist", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz "},
+                    {"tessedit_dump_choices", "0" }
                     }, false))
                     {
                         Console.SetOut(originalOut);
@@ -264,7 +289,7 @@ class Program
 
                         foreach (var slot in itemSlots)
                         {
-                            if (slot.Right > CAPTURE_WIDTH || slot.Bottom > CAPTURE_HEIGHT)
+                            if (slot.Right > screenWidth || slot.Bottom > screenHeight)
                             {
                                 Console.WriteLine($"Error: Slot {slotIndex} not in screen range");
                                 slotIndex++;
@@ -287,9 +312,11 @@ class Program
                                     finalName = FindBestMatch(recognizedText, validItemDictionary);
                                 }
 
-                                if (finalName == null && preprocessedBitmap.Height > CROP_TOP_PIXELS)
+                                // Масштабуємо висоту обрізки
+                                int scaledCropTopPixels = (int)(CROP_TOP_PIXELS * scaleY);
+                                if (finalName == null && preprocessedBitmap.Height > scaledCropTopPixels)
                                 {
-                                    using (var croppedBitmap = CropTop(preprocessedBitmap, CROP_TOP_PIXELS))
+                                    using (var croppedBitmap = CropTop(preprocessedBitmap, scaledCropTopPixels))
                                     using (var pixCropped = Pix.LoadFromMemory(GetPngBytes(croppedBitmap)))
                                     using (var pageCropped = engine.Process(pixCropped, PageSegMode.SingleLine))
                                     {
