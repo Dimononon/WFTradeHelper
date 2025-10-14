@@ -9,15 +9,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.9" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.9">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
     <PackageReference Include="System.Drawing.Common" Version="9.0.9" />
-    <PackageReference Include="Tesseract" Version="5.2.0" />
     <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WFTradeHelper.Core\WFTradeHelper.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -27,9 +24,19 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="tessdata\eng.traineddata">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+    <None Remove="C:\Users\Dimon\.nuget\packages\tesseract\5.2.0\build\\..\x86\leptonica-1.82.0.dll" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="C:\Users\Dimon\.nuget\packages\tesseract\5.2.0\build\\..\x86\tesseract50.dll" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="C:\Users\Dimon\.nuget\packages\tesseract\5.2.0\build\\..\x64\leptonica-1.82.0.dll" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="C:\Users\Dimon\.nuget\packages\tesseract\5.2.0\build\\..\x64\tesseract50.dll" />
   </ItemGroup>
 
 </Project>
