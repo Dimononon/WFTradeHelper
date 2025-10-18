@@ -16,11 +16,11 @@ public static class Configuration
     public const int OcrCropTopPixels = 21;
     public const int UiVerticalOffset = 59;
 
-    public const int PricePer15Ducats = 1;
-    public const int PricePer25Ducats = 1;
-    public const int PricePer45Ducats = 2;
-    public const int PricePer65Ducats = 3;
-    public const int PricePer100Ducats = 7;
+    public static int PricePer15Ducats = 1;
+    public static int PricePer25Ducats = 1;
+    public static int PricePer45Ducats = 2;
+    public static int PricePer65Ducats = 3;
+    public static int PricePer100Ducats = 7;
     public static Rectangle GetBaseTaxArea()
     {
         return new Rectangle(x: 1532, y: 164, width: 15, height: 19);
@@ -40,5 +40,21 @@ public static class Configuration
                 new Rectangle(1235 + cropSideOffset, 847, baseWidth, baseHeight),
                 new Rectangle(1490 + cropSideOffset, 847, baseWidth, baseHeight)
             };
+    }
+    public static List<Rectangle> GetBaseOverlaySlots()
+    {
+        const int baseWidth = 220;
+        const int baseHeight = 230;
+        const int cropSideOffset = 5;
+
+        return new List<Rectangle>
+    {
+        new Rectangle(215 + cropSideOffset, 675 , baseWidth, baseHeight),
+        new Rectangle(470 + cropSideOffset, 675, baseWidth, baseHeight),
+        new Rectangle(725 + cropSideOffset, 675, baseWidth, baseHeight),
+        new Rectangle(980 + cropSideOffset, 675, baseWidth, baseHeight),
+        new Rectangle(1235 + cropSideOffset, 675, baseWidth, baseHeight),
+        new Rectangle(1490 + cropSideOffset , 675, baseWidth, baseHeight)
+    };
     }
 }

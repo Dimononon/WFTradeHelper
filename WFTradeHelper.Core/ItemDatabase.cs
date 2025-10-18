@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using WFTradeHelper.Core.Models;
 using WFTrader.Data;
 
 namespace WFTradeHelper.Core;
@@ -13,13 +14,13 @@ public class ItemDatabase
     public List<JsonItem> AllItems { get; private set; } = new List<JsonItem>();
     private List<string> _dictionary = new List<string>();
 
-    public void LoadItems()
+    public int LoadItems()
     {
         string filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Configuration.ItemsFileName);
         if (!File.Exists(filePath))
         {
             Console.WriteLine($"ERROR: Item dictionary file '{Configuration.ItemsFileName}' not found.");
-            return;
+            return 0;
         }
 
         try
@@ -33,10 +34,12 @@ public class ItemDatabase
                 .ToList();
 
             Console.WriteLine($"Dictionary loaded from file: {_dictionary.Count} items.");
+            return _dictionary.Count;
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error reading item file: {ex.Message}");
+            return 0;
         }
     }
 

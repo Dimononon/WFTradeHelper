@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Tesseract;
+using WFTradeHelper.Core.Models;
 
 namespace WFTradeHelper.Core;
 public class TradeEvaluator
@@ -20,122 +21,131 @@ public class TradeEvaluator
         _itemDatabase = itemDatabase;
     }
 
-    public void EvaluateTrade()
+    public TradeResult EvaluateTrade()
     {
-        Console.WriteLine("\n--- Start scan (F8) ---");
+        var tradeResult = new TradeResult();
+        var itemSlots = _screenService.GetScaledItemSlots();
+        var overlaySlots = Configuration.GetBaseOverlaySlots()
+        .Select(r => new Rectangle(
+            (int)(r.X * _screenService.ScaleX),
+            (int)(r.Y * _screenService.ScaleY),
+            (int)(r.Width * _screenService.ScaleX),
+            (int)(r.Height * _screenService.ScaleY)))
+        .ToList();
+        int slotIndex = 1;
 
-        using (var screenBitmap = _screenService.CaptureScreen())
+#if DEBUG
+        using (var fullScreenBitmapForDebug = _screenService.CaptureScreen())
         {
             string fullScreenPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "full_screen_capture.png");
-            screenBitmap.Save(fullScreenPath, System.Drawing.Imaging.ImageFormat.Png);
-            Console.WriteLine($"Full screenshot saved: {Path.GetFileName(fullScreenPath)}");
-
-            var itemSlots = _screenService.GetScaledItemSlots();
-            int platCost = 0;
-            int slotIndex = 1;
-
-            foreach (var slot in itemSlots)
-            {
-                if (slot.Right > _screenService.ScreenWidth || slot.Bottom > _screenService.ScreenHeight)
-                {
-                    Console.WriteLine($"Error: Slot {slotIndex} not in screen range");
-                    slotIndex++;
-                    continue;
-                }
-
-                string finalName = null;
-                string recognizedText = "(not recognized)";
-
-                //1.1 try
-                using (var itemBitmap = screenBitmap.Clone(slot, screenBitmap.PixelFormat))
-                using (var preprocessedBitmap = ScreenService.PreprocessImage(itemBitmap))
-                {
-                    string filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, $"slot_{slotIndex}.png");
-                    preprocessedBitmap.Save(filePath, System.Drawing.Imaging.ImageFormat.Png);
-
-                    recognizedText = _ocrService.RecognizeText(preprocessedBitmap);
-                    finalName = _itemDatabase.FindBestMatch(recognizedText);
-
-                    //1.2 try
-                    int scaledCropTopPixels = (int)(Configuration.OcrCropTopPixels * _screenService.ScaleY);
-                    if (finalName == null && preprocessedBitmap.Height > scaledCropTopPixels)
-                    {
-                        using (var croppedBitmap = ScreenService.CropTop(preprocessedBitmap, scaledCropTopPixels))
-                        {
-                            string croppedText = _ocrService.RecognizeText(croppedBitmap, PageSegMode.SingleLine);
-                            string croppedName = _itemDatabase.FindBestMatch(croppedText);
-                            if (croppedName != null)
-                            {
-                                finalName = croppedName;
-                            }
-                        }
-                    }
-                }
-                //2 try
-                if (finalName == null)
-                {
-                    int scaledYOffset = (int)(Configuration.UiVerticalOffset * _screenService.ScaleY);
-                    var shiftedSlot = new Rectangle(slot.X, slot.Y + scaledYOffset, slot.Width, slot.Height);
-
-                    if (shiftedSlot.Bottom <= _screenService.ScreenHeight)
-                    {
-                        using (var shiftedItemBitmap = screenBitmap.Clone(shiftedSlot, screenBitmap.PixelFormat))
-                        using (var shiftedPreprocessedBitmap = ScreenService.PreprocessImage(shiftedItemBitmap))
-                        {
-                            //2.1 try
-                            string shiftedRecognizedText = _ocrService.RecognizeText(shiftedPreprocessedBitmap);
-                            string shiftedFinalName = _itemDatabase.FindBestMatch(shiftedRecognizedText);
-
-                            //2.2 try
-                            int scaledCropTopPixels = (int)(Configuration.OcrCropTopPixels * _screenService.ScaleY);
-                            if (shiftedFinalName == null && shiftedPreprocessedBitmap.Height > scaledCropTopPixels)
-                            {
-                                using (var croppedBitmap = ScreenService.CropTop(shiftedPreprocessedBitmap, scaledCropTopPixels))
-                                {
-                                    string croppedText = _ocrService.RecognizeText(croppedBitmap, PageSegMode.SingleLine);
-                                    shiftedFinalName = _itemDatabase.FindBestMatch(croppedText);
-                                    if (shiftedFinalName != null)
-                                    {
-                                        recognizedText = croppedText;
-                                    }
-                                }
-                            }
-
-                            if (shiftedFinalName != null)
-                            {
-                                finalName = shiftedFinalName;
-                                if (recognizedText == "(not recognized)") recognizedText = shiftedRecognizedText;
-                            }
-                        }
-                    }
-                }
-                ProcessRecognizedItem(slotIndex, finalName, recognizedText, ref platCost);
-                slotIndex++;
-            }
-            Console.WriteLine($"--- Stop scan ---\n Total Platinum: {platCost}");
+            fullScreenBitmapForDebug.Save(fullScreenPath, System.Drawing.Imaging.ImageFormat.Png);
+            Console.WriteLine($"[DEBUG] Full screenshot saved: {Path.GetFileName(fullScreenPath)}");
         }
+#endif
+
+        foreach (var slot in itemSlots)
+        {
+            if (slot.Right > _screenService.ScreenWidth || slot.Bottom > _screenService.ScreenHeight || slot.Y < 0)
+            {
+                slotIndex++;
+                continue;
+            }
+
+            string finalName = null;
+            string recognizedText = "(not recognized)";
+
+            // --- Етап 1 і 2: Захоплюємо ТІЛЬКИ область слота та аналізуємо її ---
+            using (var itemBitmap = _screenService.CaptureRegion(slot))
+            using (var preprocessedBitmap = ScreenService.PreprocessImage(itemBitmap))
+            {
+#if DEBUG
+                string filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, $"slot_{slotIndex}.png");
+                preprocessedBitmap.Save(filePath, System.Drawing.Imaging.ImageFormat.Png);
+#endif
+                recognizedText = _ocrService.RecognizeText(preprocessedBitmap);
+                finalName = _itemDatabase.FindBestMatch(recognizedText);
+
+                int scaledCropTopPixels = (int)(Configuration.OcrCropTopPixels * _screenService.ScaleY);
+                if (finalName == null && preprocessedBitmap.Height > scaledCropTopPixels)
+                {
+                    using (var croppedBitmap = ScreenService.CropTop(preprocessedBitmap, scaledCropTopPixels))
+                    {
+                        string croppedText = _ocrService.RecognizeText(croppedBitmap, PageSegMode.SingleLine);
+                        string croppedName = _itemDatabase.FindBestMatch(croppedText);
+                        if (croppedName != null)
+                        {
+                            finalName = croppedName;
+                            recognizedText = croppedText;
+                        }
+                    }
+                }
+            }
+
+            // --- Етап 3: Якщо нічого не знайдено, захоплюємо та аналізуємо область зі зсувом ---
+            if (finalName == null)
+            {
+                int scaledYOffset = (int)(Configuration.UiVerticalOffset * _screenService.ScaleY);
+                var shiftedSlot = new Rectangle(slot.X, slot.Y + scaledYOffset, slot.Width, slot.Height);
+
+                if (shiftedSlot.Bottom <= _screenService.ScreenHeight)
+                {
+                    using (var shiftedItemBitmap = _screenService.CaptureRegion(shiftedSlot))
+                    using (var shiftedPreprocessedBitmap = ScreenService.PreprocessImage(shiftedItemBitmap))
+                    {
+                        string shiftedRecognizedText = _ocrService.RecognizeText(shiftedPreprocessedBitmap);
+                        string shiftedFinalName = _itemDatabase.FindBestMatch(shiftedRecognizedText);
+
+                        if (shiftedFinalName != null)
+                        {
+                            finalName = shiftedFinalName;
+                            recognizedText = shiftedRecognizedText;
+                        }
+                    }
+                }
+            }
+
+            var scanResult = ProcessSlot(slotIndex, finalName, recognizedText);
+            tradeResult.ScanResults.Add(scanResult);
+
+            var overlayInfo = new OverlayInfo
+            {
+                Bounds = overlaySlots[slotIndex - 1],
+                Text = scanResult.Status == "OK" ? scanResult.ItemName : "Not Found",
+                IsSuccess = scanResult.Status == "OK"
+            };
+            tradeResult.OverlayElements.Add(overlayInfo);
+            slotIndex++;
+        }
+        tradeResult.TotalPlatinum = tradeResult.ScanResults.Sum(r => r.PlatinumValue);
+        return tradeResult;
     }
 
-    private void ProcessRecognizedItem(int slotIndex, string finalName, string originalText, ref int platCost)
+    private ScanResult ProcessSlot(int slotIndex, string finalName, string originalText)
     {
+        var result = new ScanResult
+        {
+            SlotNumber = slotIndex,
+            ItemName = originalText.Replace("\n", " ").Replace("|", "I"),
+            Status = "Not Found"
+        };
+
         if (finalName != null)
         {
             var matchedItem = _itemDatabase.GetItemByName(finalName);
             if (matchedItem != null && matchedItem.Ducats.HasValue)
             {
-                int ducatValue = matchedItem.Ducats.Value;
-                platCost += CalculatePlatCost(ducatValue);
-                Console.WriteLine($"Slot {slotIndex}: {finalName,-50} ({ducatValue,-3} ducats)");
+                result.ItemName = finalName;
+                result.Ducats = matchedItem.Ducats.Value;
+                result.PlatinumValue = CalculatePlatCost(result.Ducats);
+                result.Status = "OK";
             }
             else
             {
-                Console.WriteLine($"Slot {slotIndex}: {finalName,-50} (Item data error)");
+                result.ItemName = finalName;
+                result.Status = "Item data error";
             }
         }
-        else
-        {
-            Console.WriteLine($"Slot {slotIndex}: {originalText.Replace("\n", " ").Replace("|", "I"),-50} (Not Found)");
-        }
+        return result;
     }
     public bool HasTradeStateChanged()
     {

@@ -40,7 +40,30 @@ namespace WFTradeHelper
                     if (GetAsyncKeyState((int)Keys.F8) != 0 && !isF8Pressed)
                     {
                         isF8Pressed = true;
-                        tradeEvaluator.EvaluateTrade();
+                        try
+                        {
+                            Console.WriteLine("\n--- Start scan (F8) ---");
+                            var results = tradeEvaluator.EvaluateTrade();
+                            int totalPlat = 0;
+
+                            foreach (var res in results)
+                            {
+                                if (res.Status == "OK")
+                                {
+                                    Console.WriteLine($"Slot {res.SlotNumber}: {res.ItemName,-50} ({res.Ducats,-3} ducats)");
+                                    totalPlat += res.PlatinumValue;
+                                }
+                                else
+                                {
+                                    Console.WriteLine($"Slot {res.SlotNumber}: {res.ItemName,-50} ({res.Status})");
+                                }
+                            }
+                            Console.WriteLine($"--- Stop scan ---\n Total Platinum: {totalPlat}");
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Critical Error: {ex.Message}");
+                        }
                     }
                     else if (GetAsyncKeyState((int)Keys.F8) == 0)
                     {

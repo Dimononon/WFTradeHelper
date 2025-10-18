@@ -30,7 +30,20 @@ public class ScreenService
         }
         return bitmap;
     }
+    public Bitmap CaptureRegion(Rectangle region)
+    {
+        if (region.Width <= 0 || region.Height <= 0)
+        {
+            throw new ArgumentException("Region width and height must be positive.");
+        }
 
+        var bitmap = new Bitmap(region.Width, region.Height);
+        using (var g = Graphics.FromImage(bitmap))
+        {
+            g.CopyFromScreen(region.Location, Point.Empty, region.Size);
+        }
+        return bitmap;
+    }
     public List<Rectangle> GetScaledItemSlots()
     {
         return Configuration.GetBaseItemSlots().Select(r => new Rectangle(

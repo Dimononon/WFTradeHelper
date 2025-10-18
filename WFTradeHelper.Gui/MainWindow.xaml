@@ -5,8 +5,56 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:WFTradeHelper.Gui"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
-    <Grid>
+        Title="Prime Junk Scanner" Height="450" Width="800">
+    <Grid Margin="10">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="220"/>
+            <ColumnDefinition/>
+        </Grid.ColumnDefinitions>
 
+        <StackPanel Grid.Column="0" Margin="0,0,10,0">
+            <GroupBox Header="Platinum Prices">
+                <StackPanel>
+                    <TextBlock Text="15 Ducats:" Margin="5"/>
+                    <TextBox x:Name="Price15" Text="1"/>
+                    <TextBlock Text="25 Ducats:" Margin="5"/>
+                    <TextBox x:Name="Price25" Text="1"/>
+                    <TextBlock Text="45 Ducats:" Margin="5"/>
+                    <TextBox x:Name="Price45" Text="2"/>
+                    <TextBlock Text="65 Ducats:" Margin="5"/>
+                    <TextBox x:Name="Price65" Text="3"/>
+                    <TextBlock Text="100 Ducats:" Margin="5"/>
+                    <TextBox x:Name="Price100" Text="7"/>
+                </StackPanel>
+            </GroupBox>
+            <Grid Margin="0,20,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <Button Grid.Column="0" x:Name="ScanButton" Content="Scan (F8)" Margin="0,0,5,0" Height="40" Click="ScanButton_Click"/>
+                <Button Grid.Column="1" x:Name="AutoScanButton" Content="Auto Scan: OFF" Margin="5,0,0,0" Height="40" Click="AutoScanButton_Click"/>
+            </Grid>
+            <TextBlock x:Name="StatusTextBlock" Text="Loading items..." Margin="0,10,0,0" HorizontalAlignment="Center" FontStyle="Italic"/>
+        </StackPanel>
+
+        <DockPanel Grid.Column="1">
+            <TextBlock DockPanel.Dock="Top" Text="Scan Results" FontSize="16" FontWeight="Bold"/>
+            <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="5">
+                <Ellipse x:Name="StatusIndicator" Width="15" Height="15" Fill="Gray" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                <TextBlock x:Name="TotalPlatTextBlock" Text="Total Platinum: 0" FontSize="14" FontWeight="Bold" VerticalAlignment="Center"/>
+            </StackPanel>
+            <ListView x:Name="ResultsListView" Margin="0,10,0,0">
+                <ListView.View>
+                    <GridView>
+                        <GridViewColumn Header="Slot" Width="50" DisplayMemberBinding="{Binding SlotNumber}"/>
+                        <GridViewColumn Header="Item Name" Width="300" DisplayMemberBinding="{Binding ItemName}"/>
+                        <GridViewColumn Header="Ducats" Width="80" DisplayMemberBinding="{Binding Ducats}"/>
+                        <GridViewColumn Header="Status" Width="100" DisplayMemberBinding="{Binding Status}"/>
+                    </GridView>
+                </ListView.View>
+            </ListView>
+        </DockPanel>
     </Grid>
 </Window>
