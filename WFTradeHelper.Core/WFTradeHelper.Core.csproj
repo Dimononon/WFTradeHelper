@@ -25,9 +25,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="tessdata\eng.traineddata">
+    <None Update="tessdata\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
-
+  <ItemGroup>
+    <Content Include="x64\**" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="x86\**" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

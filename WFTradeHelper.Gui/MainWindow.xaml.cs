@@ -30,6 +30,9 @@ public partial class MainWindow : Window
 
     [DllImport("user32.dll")]
     public static extern short GetAsyncKeyState(int vKey);
+
+    private OverlayWindow _overlayWindow;
+    private readonly DispatcherTimer _overlayCloseTimer;
     public MainWindow()
     {
         InitializeComponent();
@@ -48,6 +51,9 @@ public partial class MainWindow : Window
 
         _autoScanTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         _autoScanTimer.Tick += (s,e)=>PerformScan();
+
+        _overlayCloseTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(5000) };
+        _overlayCloseTimer.Tick += (s, e) => CloseOverlay();
     }
     private void AutoScanButton_Click(object sender, RoutedEventArgs e)
     {
@@ -86,7 +92,12 @@ public partial class MainWindow : Window
     {
         PerformScan(isManual: true);
     }
-
+    private void CloseOverlay()
+    {
+        _overlayCloseTimer.Stop();
+        _overlayWindow?.Close();
+        _overlayWindow = null;
+    }
     private void UpdatePricesFromUI()
     {
         if (int.TryParse(Price15.Text, out int price15)) Configuration.PricePer15Ducats = price15;
@@ -113,13 +124,16 @@ public partial class MainWindow : Window
 
             if (isManual)
             {
+                CloseOverlay();
                 var source = PresentationSource.FromVisual(this);
                 double dpiScaleX = source.CompositionTarget.TransformToDevice.M11;
                 double dpiScaleY = source.CompositionTarget.TransformToDevice.M22;
 
-                var overlay = new OverlayWindow();
-                overlay.UpdateOverlay(tradeResult, dpiScaleX, dpiScaleY);
-                overlay.ShowTemporary(5000);
+                _overlayWindow = new OverlayWindow();
+                _overlayWindow.UpdateOverlay(tradeResult, dpiScaleX, dpiScaleY);
+                _overlayWindow.Show();
+
+                _overlayCloseTimer.Start();
             }
         }
         catch (Exception ex)

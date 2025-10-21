@@ -21,6 +21,7 @@ namespace WFTradeHelper.Gui
     /// </summary>
     public partial class OverlayWindow : Window
     {
+        const int BOX_LENGHT = 220;
         public OverlayWindow()
         {
             InitializeComponent();
@@ -51,12 +52,16 @@ namespace WFTradeHelper.Gui
                 {
                     Text = element.Text,
                     Foreground = Brushes.White,
-                    FontSize = 16,
+                    FontSize = 14,
                     FontWeight = FontWeights.Bold,
-                    Background = new SolidColorBrush(Color.FromArgb(180, 0, 0, 0))
+                    Background = new SolidColorBrush(Color.FromArgb(180, 0, 0, 0)),
+                    Width = BOX_LENGHT / dpiScaleX,
+                    TextWrapping = TextWrapping.WrapWithOverflow,
+                    TextAlignment = TextAlignment.Center,
+
                 };
                 Canvas.SetLeft(textBlock, left);
-                Canvas.SetTop(textBlock, top + height); // 5 DIU відступ знизу
+                Canvas.SetTop(textBlock, top + height);
                 OverlayCanvas.Children.Add(textBlock);
             }
 

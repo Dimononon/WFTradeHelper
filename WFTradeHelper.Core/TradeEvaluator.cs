@@ -54,7 +54,7 @@ public class TradeEvaluator
             string finalName = null;
             string recognizedText = "(not recognized)";
 
-            // --- Етап 1 і 2: Захоплюємо ТІЛЬКИ область слота та аналізуємо її ---
+            //try 1.1
             using (var itemBitmap = _screenService.CaptureRegion(slot))
             using (var preprocessedBitmap = ScreenService.PreprocessImage(itemBitmap))
             {
@@ -66,6 +66,7 @@ public class TradeEvaluator
                 finalName = _itemDatabase.FindBestMatch(recognizedText);
 
                 int scaledCropTopPixels = (int)(Configuration.OcrCropTopPixels * _screenService.ScaleY);
+                //try 1.2
                 if (finalName == null && preprocessedBitmap.Height > scaledCropTopPixels)
                 {
                     using (var croppedBitmap = ScreenService.CropTop(preprocessedBitmap, scaledCropTopPixels))
@@ -81,7 +82,7 @@ public class TradeEvaluator
                 }
             }
 
-            // --- Етап 3: Якщо нічого не знайдено, захоплюємо та аналізуємо область зі зсувом ---
+            //try 2
             if (finalName == null)
             {
                 int scaledYOffset = (int)(Configuration.UiVerticalOffset * _screenService.ScaleY);

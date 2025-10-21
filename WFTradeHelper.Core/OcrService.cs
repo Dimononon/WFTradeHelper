@@ -13,8 +13,14 @@ public class OcrService : IDisposable
 
     public OcrService()
     {
+        string tessDataPath = Path.Combine(AppContext.BaseDirectory, "tessdata");
+
+        if (!Directory.Exists(tessDataPath))
+        {
+            throw new DirectoryNotFoundException($"Tessdata directory not found at: {tessDataPath}");
+        }
         _engine = new TesseractEngine(
-            $"{AppDomain.CurrentDomain.BaseDirectory}/tessdata",
+            tessDataPath,
             "eng",
             EngineMode.Default,
             null,
