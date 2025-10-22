@@ -10,4 +10,5 @@ public class TradeResult
     public List<ScanResult> ScanResults { get; set; } = new List<ScanResult>();
     public List<OverlayInfo> OverlayElements { get; set; } = new List<OverlayInfo>();
     public int TotalPlatinum { get; set; }
+    public bool IsVerticalOffset { get; set; } = false;
 }

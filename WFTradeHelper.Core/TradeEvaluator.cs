@@ -24,6 +24,8 @@ public class TradeEvaluator
     public TradeResult EvaluateTrade()
     {
         var tradeResult = new TradeResult();
+        bool isVerticalOffset = false;
+
         var itemSlots = _screenService.GetScaledItemSlots();
         var overlaySlots = Configuration.GetBaseOverlaySlots()
         .Select(r => new Rectangle(
@@ -53,7 +55,6 @@ public class TradeEvaluator
 
             string finalName = null;
             string recognizedText = "(not recognized)";
-
             //try 1.1
             using (var itemBitmap = _screenService.CaptureRegion(slot))
             using (var preprocessedBitmap = ScreenService.PreprocessImage(itemBitmap))
@@ -85,6 +86,7 @@ public class TradeEvaluator
             //try 2
             if (finalName == null)
             {
+                isVerticalOffset = true;
                 int scaledYOffset = (int)(Configuration.UiVerticalOffset * _screenService.ScaleY);
                 var shiftedSlot = new Rectangle(slot.X, slot.Y + scaledYOffset, slot.Width, slot.Height);
 
@@ -118,6 +120,7 @@ public class TradeEvaluator
             slotIndex++;
         }
         tradeResult.TotalPlatinum = tradeResult.ScanResults.Sum(r => r.PlatinumValue);
+        tradeResult.IsVerticalOffset = isVerticalOffset;
         return tradeResult;
     }
 

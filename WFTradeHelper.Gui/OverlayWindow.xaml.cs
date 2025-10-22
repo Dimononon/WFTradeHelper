@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Configuration;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -13,6 +14,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using WFTradeHelper.Core.Models;
+using WFTradeHelper.Core;
 
 namespace WFTradeHelper.Gui
 {
@@ -33,7 +35,15 @@ namespace WFTradeHelper.Gui
             foreach (var element in result.OverlayElements)
             {
                 double left = element.Bounds.Left / dpiScaleX;
-                double top = element.Bounds.Top / dpiScaleY;
+                double top;
+                if (result.IsVerticalOffset)
+                {
+                    top = (element.Bounds.Top + Core.Configuration.UiVerticalOffset )/ dpiScaleY;
+                }
+                else
+                {
+                    top = element.Bounds.Top / dpiScaleY;
+                }
                 double width = element.Bounds.Width / dpiScaleX;
                 double height = element.Bounds.Height / dpiScaleY;
 
@@ -69,7 +79,7 @@ namespace WFTradeHelper.Gui
             {
                 var firstElement = result.OverlayElements[0];
                 double totalPlatLeft = firstElement.Bounds.Left / dpiScaleX;
-                double totalPlatTop = (firstElement.Bounds.Bottom / dpiScaleY) + 40;
+                double totalPlatTop = result.IsVerticalOffset? (((firstElement.Bounds.Bottom + Core.Configuration.UiVerticalOffset) / dpiScaleY) + 40) : ((firstElement.Bounds.Bottom / dpiScaleY) + 40);
 
                 var totalPlatBlock = new TextBlock
                 {
